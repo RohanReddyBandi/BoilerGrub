@@ -63,8 +63,14 @@ Surprises worth coding against:
    **`Late Lunch`**. Worse, `Type` doesn't rescue you — `Brunch` reports
    `Type: "Unknown"` and `Late Lunch` reports `Type: "Snack"`. So the meal model
    must treat the name as open-ended and **sort by `Order`**, not by a fixed enum.
-2. **`Status` can be `"Closed"`** (4 of 19 meals in the fixtures). Closed meals
-   still carry a full item list — worth showing, but visually de-emphasised.
+2. **`Status` can be `"Closed"`** (4 of 19 meals in the fixtures), and a closed
+   meal carries **zero stations and zero items**. *(Corrected: my first pass
+   assumed closed meals still listed their food. They don't — I checked.)*
+   `Closed` means the court doesn't serve that period on that day at all; it is
+   not a "closed at this moment" flag. Hillenbrand has Brunch, Lunch *and* Late
+   Lunch closed on the captured day, so a court can legitimately have nothing
+   browsable. The menu screen therefore filters empty meals out of the selector
+   instead of offering a tab that leads nowhere.
 3. **Items with `NutritionReady: false` omit the `Allergens` key entirely.** Not
    an empty array — the key is gone. `Allergens` must decode as optional.
 4. `Date` echoes back as `M/D/YYYY`, not the `MM-DD-YYYY` you sent.
@@ -173,6 +179,147 @@ cookie-less `URLSession` — no reason to carry an identifier around.
 ### Fixtures saved
 
 `/fixtures` holds real unedited responses: six menus (five courts on 2026-09-11,
-plus Earhart on a past date), an unpublished-date menu, `locations.json`, eight
+plus Earhart on a past date), an unpublished-date menu (`menu-Earhart-12-25-2026.json`), `locations.json`, eight
 item details (one `NutritionReady: false` stub among them), and a captured 500
 error body for testing the failure path.
+
+---
+
+## Step 2 — the app (2026-09-11)
+
+### Design direction: the tray line
+
+The brief ruled out the obvious build — gold header, white cards, rounded
+corners, grey shadows — so the direction here is a **cafeteria tray line printed
+as a meal ticket**, and it commits hard enough that the rest can stay quiet.
+
+**The one structural idea** is a gold hairline *rail* running down the leading
+edge of the content, notched with a tick where each station begins. Stacked down
+the screen, the notches read as stations along a serving line. It carries the
+station list, and it reappears in today's log to bracket each saved plate.
+
+Everything else follows one rule: **the app has no cards and no shadows.** Every
+separation is a line, and there are exactly three:
+
+| Device | Means |
+|---|---|
+| Hairline rule | a minor break between rows |
+| Perforation (dashed) | a tear-off between major sections |
+| Double rule | everything below this is a total |
+
+That vocabulary is the whole visual system. Because it's so small, the rare
+filled element — the gold `add to plate` and `save to apple health` buttons —
+carries real weight without needing a shadow or a gradient to announce itself.
+
+**Type is two families, each with one job.** Dish names, court names and
+headings are set in **New York** (serif) — the menu-board voice. Every number,
+and every small metadata label, is **SF Mono**. Monospaced digits are what let a
+column of macros line up like a register tape, and the tape is the idea.
+Nothing in the app uses the default UI sans, which is the fastest way for an
+iOS app to look like every other iOS app.
+
+**The numbers carry it**, as asked. The calorie figure on a dish is 72pt mono
+light; the plate and daily totals are 44pt. On the detail screen it's the first
+thing your eye lands on, sitting directly under a double rule with nothing
+competing. Item rows connect name to figure with leader dots, the way a printed
+menu connects a dish to its price.
+
+**Colour**: Purdue black (warmed a touch off pure #000 so it doesn't glare on
+OLED), old gold #CEB888 for rules, ticks and accents, and bone rather than white
+for type. The app is dark-only — `UIUserInterfaceStyle = Dark` — which is a
+deliberate commitment, not an oversight: a chalkboard doesn't have a light mode.
+One non-Purdue hue exists, a muted ember, reserved solely for destructive
+actions so "remove" never has to borrow gold's authority.
+
+Explicitly avoided, per the brief: identical rounded cards, a shared shadow,
+ALL-CAPS eyebrow labels (labels are lowercase mono with tracking, which reads as
+stamped ticket furniture instead of a heading), gradients, and fade-up-on-scroll
+animations.
+
+### Screens
+
+- **Menu** — court name opens a picker; a strip of tear-off day stubs; meal
+  names underlined in gold; stations hung off the rail. Nutrition is *not* shown
+  inline, by request, so browsing costs exactly zero extra network calls.
+- **Dish** — the nutrition ticket. Hero calorie figure, a three-up macro row,
+  then the remaining ten rows the API returns as a register tape. Every figure
+  reflects the serving count dialled in at the bottom, so the number on screen
+  is the number that will land in Health.
+- **Plate** — a register tape with a pinned footer. The total belongs at the
+  *end* of a tape, but a plate you're still editing needs its running figure
+  visible at all times, so the tape's ending is pinned to the bottom of the
+  screen rather than the bottom of the list.
+- **Today** — the day's total at the top, then each saved plate bracketed by the
+  rail, with its Health sync state stamped at the right.
+
+The plate itself lives in a bar pinned under the menu rather than in a tab: it's
+something you accumulate while walking the line, so it belongs underfoot.
+
+### Decisions worth recording
+
+**Nutrition is fetched on tap, never prefetched.** Since macros aren't shown in
+the menu list, browsing a full court-day costs one request. Tapping a dish costs
+one more, cached permanently. Had calories been shown inline it would have cost
+30–75 requests per court-day (Earhart alone has 75 distinct nutrition-ready
+items in a day).
+
+**Local write first, Health second.** `PlateScreen.save()` commits to SwiftData
+and only then attempts HealthKit. A denied permission, a restricted device, or
+an iPad with no Health app then costs the reader nothing but the sync — and the
+daily view offers a retry. This ordering is the single most important line in
+that file.
+
+**Write-only HealthKit.** The app requests `toShare` for the four quantity types
+plus the food correlation, and reads nothing. The daily view is built from what
+BoilerGrub itself logged, so there's no reason to ask for read access — and
+asking for less makes the prompt easier to say yes to. Permission is requested
+on the first actual save, not at launch.
+
+**One food entry per dish, not one per plate.** Each plate item is saved as its
+own `HKCorrelation` with `HKMetadataKeyFoodType` set to the dish name, so the
+Health app shows "Blackened Tilapia" rather than an anonymous lump of calories.
+
+**Logged items copy their macros rather than referencing an item id.** The
+upstream API is unofficial and dishes get revised or vanish; a record of what you
+ate in March must not be able to change in September.
+
+**Serving counts move in half-steps.** A quarter of a "Pizza" or an "8x10 Cut
+Serving" isn't something anyone can estimate, and since the API gives no numeric
+serving weight there's nothing to estimate *from*.
+
+**Two scaling rules that took a second pass to get right.** At exactly one
+serving, rows pass through untouched — including `% Daily Value`, which is only
+meaningful against the serving the label was computed for. Above or below one
+serving, daily values are dropped, and **label-only rows are blanked** rather
+than left alone: `Calories from fat` has no numeric `Value`, so leaving its
+"108" sitting next to doubled neighbours would quietly misreport it. Separately,
+`Calcium` and `Iron` come back with a numeric `Value` but a *null* `LabelValue`,
+so the raw number is printed without an invented unit, with the `%` beside it
+supplying the context.
+
+### Tests
+
+57 tests, all running off the bundled fixtures — no network, and nothing that
+starts failing in November when a dining court changes its menu. They cover
+decoding every captured court, meal ordering, the open-ended meal names, closed
+and unpublished days, placeholder rows, the Atwater unit check, both scaling
+rules, plate arithmetic, the cache policy (past days and item nutrition cached
+permanently, unpublished days never cached, stale cache served when the network
+fails), and the transport layer's 500-means-not-found mapping via a stubbed
+`URLProtocol`.
+
+### Known limits
+
+- **No numeric serving weight exists anywhere in the API**, so a "serving" is
+  whatever the court means by it. This is the single biggest caveat on any
+  number this app writes to Health.
+- **The five courts are hardcoded.** `/locations` confirms the set is fixed and
+  the menu URL needs the display name anyway; if Purdue opens a sixth court it's
+  a one-line change.
+- **Deleting a logged plate doesn't remove it from Health.** Anything already
+  written belongs to the reader and is theirs to manage in the Health app;
+  silently deleting their health data from under them would be the worse
+  default.
+- **Upstream will break eventually.** When it does, it should surface as a calm
+  empty state, because every DTO field is optional and every failure path lands
+  in `MenuServiceError`. `HFSMenuClient` is the only file that would need work.
