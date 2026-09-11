@@ -85,14 +85,40 @@ struct NutritionRow: Codable, Identifiable, Equatable, Sendable {
         return String(suffix)
     }
 
+    /// What to print in the value column.
+    ///
+    /// Calcium and Iron come back with a numeric `Value` but a null
+    /// `LabelValue`, so falling back to the raw number keeps two real figures on
+    /// screen instead of two em dashes. No unit is invented for them — the API
+    /// never says what it is, and the % daily value beside it supplies the
+    /// context that matters.
+    var displayValue: String? {
+        if let labelValue { return labelValue }
+        guard let value else { return nil }
+        return Figure.grams(value)
+    }
+
     func scaled(by servings: Double) -> NutritionRow {
-        guard let value else { return self }   // label-only rows don't scale
+        // A single serving is the figure the API already published, so it is
+        // passed through untouched — including its % daily value, which is only
+        // meaningful against the serving the label was computed for.
+        guard servings != 1 else { return self }
+
+        guard let value else {
+            // Label-only rows ("Calories from fat", "Serving Size") carry no
+            // number to multiply. Printing the unscaled label next to scaled
+            // neighbours would quietly misreport it, so the value is withheld.
+            return NutritionRow(name: name, value: nil, labelValue: nil, dailyValue: nil)
+        }
+
         let scaledValue = value * servings
         return NutritionRow(
             name: name,
             value: scaledValue,
             labelValue: Self.format(scaledValue, unit: unit),
-            dailyValue: nil   // percentages stop being meaningful once scaled
+            // A percentage of a daily value stops being the published figure
+            // once the portion changes, so it is dropped rather than scaled.
+            dailyValue: nil
         )
     }
 
