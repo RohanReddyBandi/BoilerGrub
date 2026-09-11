@@ -193,7 +193,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "BoilerGrub reads today's dietary entries so the daily view can show everything you've logged, including meals logged elsewhere.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "BoilerGrub saves the calories and macros from your plate to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -217,7 +216,6 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSHealthShareUsageDescription = "BoilerGrub reads today's dietary entries so the daily view can show everything you've logged, including meals logged elsewhere.";
 				INFOPLIST_KEY_NSHealthUpdateUsageDescription = "BoilerGrub saves the calories and macros from your plate to Apple Health.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
