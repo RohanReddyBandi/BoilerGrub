@@ -154,3 +154,44 @@ struct TicketBackground: ViewModifier {
 extension View {
     func ticketBackground() -> some View { modifier(TicketBackground()) }
 }
+
+// MARK: - Sheet header
+
+/// The sheets carry their own header rather than a navigation bar.
+///
+/// On iOS 26 a `ToolbarItem` button is given a filled, rounded capsule by
+/// default — which is precisely the identical-rounded-shape look this design
+/// avoids, and it can't be fully stripped from inside a toolbar. Building the
+/// header out of the same rules and stamps as the rest of the app keeps one
+/// vocabulary on screen and removes the navigation bar's dead space.
+struct SheetHeader<Trailing: View>: View {
+    let title: String
+    let onClose: () -> Void
+    @ViewBuilder var trailing: Trailing
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(alignment: .firstTextBaseline) {
+                Button(action: onClose) {
+                    StampLabel("close", color: Palette.muted, font: Type.micro)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 8)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+                StampLabel(title, color: Palette.gold, font: Type.labelLarge)
+                Spacer()
+
+                trailing
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+            .padding(.bottom, 14)
+
+            HairlineRule()
+        }
+        .background(Palette.ground)
+    }
+}
