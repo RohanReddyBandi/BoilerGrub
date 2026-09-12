@@ -323,3 +323,74 @@ fails), and the transport layer's 500-means-not-found mapping via a stubbed
 - **Upstream will break eventually.** When it does, it should surface as a calm
   empty state, because every DTO field is optional and every failure path lands
   in `MenuServiceError`. `HFSMenuClient` is the only file that would need work.
+
+---
+
+## Step 3 — all food spots, not just the five courts (2026-09-11)
+
+Rebuilding the landing page around every campus food location meant probing
+again rather than assuming the other eight behaved like the dining courts.
+
+### Every location has a menu at the same endpoint
+
+All twelve locations in `/locations` answer `GET /locations/{Name}/{date}/`
+with a published menu — Quick Bites and On-the-GO! included. The path segment is
+still the display `Name`, which for these includes spaces, apostrophes and
+exclamation marks (`Pete's Za at Tarkington Hall`, `Earhart On-the-GO!`) and has
+to be percent-encoded.
+
+### But two of them have no nutrition at all
+
+| Location | Type | Nutrition-ready items | Placeholder rows |
+|---|---|---|---|
+| Earhart / Ford / Hillenbrand / Wiley / Windsor | Dining Courts | 30–75 | some |
+| Pete's Za at Tarkington Hall | Quick Bites | 37 | 0 |
+| Windsor On-the-GO! | On-the-GO! | 18 | 0 |
+| Lawson On-the-GO! | On-the-GO! | 12 | 2 |
+| Earhart On-the-GO! | On-the-GO! | 11 | 0 |
+| Ford On-the-GO! | On-the-GO! | 9 | 1 |
+| **1bowl at Meredith Hall** | Quick Bites | **0** | 8 |
+| **Sushi Boss at South Hall** | Quick Bites | **0** | 30 |
+
+**1bowl and Sushi Boss publish menus where every single row is
+`NutritionReady: false`.** They're browsable, but nothing in them can be added
+to a plate or logged to Health. The app says so on the location row rather than
+letting someone tap in and discover a dead end.
+
+### Open/closed comes from `UpcomingMeals`
+
+Each location carries `UpcomingMeals`: service windows with **absolute**
+timestamps including a timezone offset (`2026-09-11T17:00:00-04:00`). Comparing
+those against the current time is the reliable open/closed test, and it needs no
+timezone guessing of our own.
+
+Two caveats found by inspection:
+
+1. **The list includes windows that have already passed.** Several locations had
+   every entry in the past, so "no current window" is common and must not be
+   mistaken for "this place doesn't exist".
+2. **It's short** — between 1 and 5 entries depending on location, so it often
+   can't answer "when does this open next".
+
+So `NormalHours` is the fallback for the next opening time: a weekly schedule
+keyed by `DayOfWeek` (0 = Sunday), which the app walks forward up to seven days.
+A location can legitimately be missing days from that schedule — 1bowl lists
+only six — which means closed all day, not missing data.
+
+### Design revisions this round
+
+- **Strictly black and gold.** The warm bone and olive-grey secondary tones are
+  gone; every non-white value in the palette is now Purdue gold at some opacity
+  against near-black. The hero calorie and total figures are set *in gold*,
+  which puts the identity colour on the most important data on screen. The one
+  remaining non-Purdue hue, the destructive ember, was removed too — "remove"
+  and "delete" are distinguished by wording and weight instead.
+- **Leader dots are gone.** Rows now resolve into fixed, right-aligned columns.
+- **The nutrition tape is properly columnar.** Previously the value column was
+  ragged and rows without a `% Daily Value` ran into the space where the
+  percentage should sit, which is what made the percentages look misaligned.
+  Value and daily-value are now fixed-width columns, and a row with no
+  percentage leaves that column empty rather than expanding into it.
+- **The date control is now a single quiet line** with previous/next arrows and
+  a tap-through to a picker, instead of a full-width scrolling strip of day
+  stubs. Picking a day is occasional; it shouldn't dominate the screen.
