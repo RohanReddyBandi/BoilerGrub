@@ -10,9 +10,16 @@ final class CacheTests: XCTestCase {
         DiskCache(name: "Tests-\(UUID().uuidString)")
     }
 
+    /// `XCTUnwrap` takes an autoclosure, which can't carry an `await`, so the
+    /// fetch happens first.
+    private func earhart() async throws -> DiningLocation {
+        let locations = try await FixtureMenuProvider().locations()
+        return try XCTUnwrap(locations.first { $0.id == "ERHT" })
+    }
+
     func testRoundTripsAMenu() async throws {
         let cache = freshCache()
-        let menu = try await FixtureMenuProvider().menu(for: .earhart, on: CalendarDay(year: 2026, month: 9, day: 11))
+        let menu = try await FixtureMenuProvider().menu(for: earhart(), on: CalendarDay(year: 2026, month: 9, day: 11))
 
         await cache.write(menu, key: "k")
         let read = await cache.read("k", as: DayMenu.self, maxAge: nil)
@@ -54,8 +61,8 @@ final class CacheTests: XCTestCase {
         let provider = CachedMenuProvider(upstream: counting, cache: cache)
         let past = CalendarDay.today.adding(days: -30)
 
-        _ = try await provider.menu(for: .earhart, on: past)
-        _ = try await provider.menu(for: .earhart, on: past)
+        _ = try await provider.menu(for: try await earhart(), on: past)
+        _ = try await provider.menu(for: try await earhart(), on: past)
 
         let count = await counting.menuCalls
         XCTAssertEqual(count, 1, "a past menu is immutable and should be cached permanently")
@@ -83,11 +90,11 @@ final class CacheTests: XCTestCase {
         let past = CalendarDay.today.adding(days: -30)
 
         let working = CachedMenuProvider(upstream: counting, cache: cache)
-        let original = try await working.menu(for: .earhart, on: past)
+        let original = try await working.menu(for: try await earhart(), on: past)
 
         // Same cache, an upstream that now fails, and an entry forced to expire.
         let failing = CachedMenuProvider(upstream: FixtureMenuProvider(failure: .offline), cache: cache)
-        let recovered = try await failing.menu(for: .earhart, on: past)
+        let recovered = try await failing.menu(for: try await earhart(), on: past)
         XCTAssertEqual(recovered, original)
         await cache.removeAll()
     }
@@ -96,7 +103,7 @@ final class CacheTests: XCTestCase {
         let cache = freshCache()
         let provider = CachedMenuProvider(upstream: FixtureMenuProvider(failure: .offline), cache: cache)
         do {
-            _ = try await provider.menu(for: .ford, on: CalendarDay(year: 2026, month: 9, day: 11))
+            _ = try await provider.menu(for: try await earhart(), on: CalendarDay(year: 2026, month: 9, day: 11))
             XCTFail("expected offline")
         } catch let error as MenuServiceError {
             XCTAssertEqual(error, .offline)
@@ -114,8 +121,8 @@ final class CacheTests: XCTestCase {
         let provider = CachedMenuProvider(upstream: counting, cache: cache)
         let unpublished = CalendarDay(year: 2026, month: 12, day: 25)
 
-        _ = try await provider.menu(for: .earhart, on: unpublished)
-        _ = try await provider.menu(for: .earhart, on: unpublished)
+        _ = try await provider.menu(for: try await earhart(), on: unpublished)
+        _ = try await provider.menu(for: try await earhart(), on: unpublished)
 
         let count = await counting.menuCalls
         XCTAssertEqual(count, 2, "an unpublished day must be re-checked, not cached")
@@ -129,9 +136,13 @@ private actor CountingProvider: MenuProviding {
     private(set) var itemCalls = 0
     private let inner = FixtureMenuProvider()
 
-    func menu(for court: DiningCourt, on day: CalendarDay) async throws -> DayMenu {
+    func locations() async throws -> [DiningLocation] {
+        try await inner.locations()
+    }
+
+    func menu(for location: DiningLocation, on day: CalendarDay) async throws -> DayMenu {
         menuCalls += 1
-        return try await inner.menu(for: court, on: day)
+        return try await inner.menu(for: location, on: day)
     }
 
     func itemDetail(id: String) async throws -> ItemDetail {

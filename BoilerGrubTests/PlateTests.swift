@@ -5,6 +5,8 @@ import XCTest
 final class PlateTests: XCTestCase {
 
     private let provider = FixtureMenuProvider()
+    private var earhart: DiningLocation { provider.fixtureLocation(id: "ERHT") }
+    private var wiley: DiningLocation { provider.fixtureLocation(id: "WILY") }
 
     private func detail(_ index: Int = 0) async throws -> ItemDetail {
         let ids = provider.fixtureItemIDs
@@ -20,8 +22,8 @@ final class PlateTests: XCTestCase {
         let a = try await detail(0)
         let b = try await detail(1)
 
-        plate.add(a, court: .earhart, mealName: "Lunch")
-        plate.add(b, court: .earhart, mealName: "Lunch")
+        plate.add(a, location: earhart, mealName: "Lunch")
+        plate.add(b, location: earhart, mealName: "Lunch")
 
         XCTAssertEqual(plate.itemCount, 2)
         let expected = (a.facts?.calories ?? 0) + (b.facts?.calories ?? 0)
@@ -31,8 +33,8 @@ final class PlateTests: XCTestCase {
     func testAddingTheSameItemTwiceBumpsServings() async throws {
         let plate = Plate()
         let item = try await detail()
-        plate.add(item, court: .wiley, mealName: "Dinner")
-        plate.add(item, court: .wiley, mealName: "Dinner")
+        plate.add(item, location: wiley, mealName: "Dinner")
+        plate.add(item, location: wiley, mealName: "Dinner")
 
         XCTAssertEqual(plate.itemCount, 1, "the same dish should not appear twice")
         XCTAssertEqual(plate.servings(for: item.id), 2)
@@ -43,14 +45,14 @@ final class PlateTests: XCTestCase {
     func testPlaceholderItemsCannotBeAdded() async throws {
         let plate = Plate()
         let placeholder = try await provider.itemDetail(id: "86012f74-9046-4051-b1fa-b9b6b8e0e269")
-        plate.add(placeholder, court: .ford, mealName: "Lunch")
+        plate.add(placeholder, location: provider.fixtureLocation(id: "FORD"), mealName: "Lunch")
         XCTAssertTrue(plate.isEmpty)
     }
 
     func testServingsStepInHalves() async throws {
         let plate = Plate()
         let item = try await detail()
-        plate.add(item, court: .ford, mealName: "Lunch")
+        plate.add(item, location: provider.fixtureLocation(id: "FORD"), mealName: "Lunch")
 
         plate.increment(item.id)
         XCTAssertEqual(plate.servings(for: item.id), 1.5)
@@ -62,7 +64,7 @@ final class PlateTests: XCTestCase {
     func testDecrementingToZeroRemovesTheItem() async throws {
         let plate = Plate()
         let item = try await detail()
-        plate.add(item, court: .ford, mealName: "Lunch", servings: 0.5)
+        plate.add(item, location: provider.fixtureLocation(id: "FORD"), mealName: "Lunch", servings: 0.5)
         plate.decrement(item.id)
         XCTAssertTrue(plate.isEmpty)
     }
@@ -70,7 +72,7 @@ final class PlateTests: XCTestCase {
     func testServingsAreClamped() async throws {
         let plate = Plate()
         let item = try await detail()
-        plate.add(item, court: .ford, mealName: "Lunch")
+        plate.add(item, location: provider.fixtureLocation(id: "FORD"), mealName: "Lunch")
         plate.setServings(9_000, for: item.id)
         XCTAssertEqual(plate.servings(for: item.id), Plate.maxServings)
 
@@ -81,7 +83,7 @@ final class PlateTests: XCTestCase {
     func testSnapshotCarriesScaledTotals() async throws {
         let plate = Plate()
         let item = try await detail()
-        plate.add(item, court: .windsor, mealName: "Dinner", servings: 2)
+        plate.add(item, location: provider.fixtureLocation(id: "WIND"), mealName: "Dinner", servings: 2)
 
         let snapshot = plate.snapshot()
         let entry = try XCTUnwrap(snapshot.entries.first)
@@ -94,7 +96,7 @@ final class PlateTests: XCTestCase {
 
     func testClearEmptiesThePlate() async throws {
         let plate = Plate()
-        plate.add(try await detail(), court: .earhart, mealName: "Lunch")
+        plate.add(try await detail(), location: earhart, mealName: "Lunch")
         plate.clear()
         XCTAssertTrue(plate.isEmpty)
         XCTAssertEqual(plate.totals.calories, 0)

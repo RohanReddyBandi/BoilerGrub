@@ -10,25 +10,56 @@ final class MenuDecodingTests: XCTestCase {
     /// With a test host, `Bundle.main` is the app bundle, which is where the
     /// fixtures are.
     private let provider = FixtureMenuProvider()
+    private let captured = CalendarDay(year: 2026, month: 9, day: 11)
 
-    private func menu(_ court: DiningCourt, _ day: CalendarDay = CalendarDay(year: 2026, month: 9, day: 11)) async throws -> DayMenu {
-        try await provider.menu(for: court, on: day)
+    private func allLocations() async throws -> [DiningLocation] {
+        try await provider.locations()
     }
 
-    func testDecodesEveryCapturedCourt() async throws {
-        for court in DiningCourt.allCases {
-            let menu = try await menu(court)
-            XCTAssertTrue(menu.isPublished, "\(court.displayName) fixture should be published")
-            XCTAssertFalse(menu.meals.isEmpty, "\(court.displayName) should decode meals")
-            XCTAssertEqual(menu.court, court)
+    private func courts() async throws -> [DiningLocation] {
+        try await allLocations().filter { $0.kind == .diningCourt }
+    }
+
+    private func menu(_ location: DiningLocation, _ day: CalendarDay? = nil) async throws -> DayMenu {
+        try await provider.menu(for: location, on: day ?? captured)
+    }
+
+    /// `XCTUnwrap` takes an autoclosure, which can't carry an `await`, so the
+    /// fetch happens first.
+    private func named(_ name: String) async throws -> DiningLocation {
+        let locations = try await allLocations()
+        return try XCTUnwrap(locations.first { $0.name == name })
+    }
+
+    // MARK: Decoding
+
+    func testDecodesEveryCapturedLocation() async throws {
+        let locations = try await allLocations()
+        XCTAssertEqual(locations.count, 12, "/locations returns twelve food spots")
+
+        for location in locations {
+            let menu = try await menu(location)
+            XCTAssertTrue(menu.isPublished, "\(location.name) fixture should be published")
+            XCTAssertFalse(menu.meals.isEmpty, "\(location.name) should decode meals")
+            XCTAssertEqual(menu.locationID, location.id)
+            XCTAssertEqual(menu.locationName, location.name)
+        }
+    }
+
+    /// Quick Bites and On-the-GO! names carry spaces, apostrophes and
+    /// exclamation marks, and their fixtures are found by slug.
+    func testNonCourtLocationsResolveTheirFixtures() async throws {
+        for name in ["Pete's Za at Tarkington Hall", "Earhart On-the-GO!", "1bowl at Meredith Hall"] {
+            let menu = try await menu(try await named(name))
+            XCTAssertFalse(menu.meals.isEmpty, "\(name) should resolve a fixture")
         }
     }
 
     /// The whole reason `Meal` doesn't use a fixed breakfast/lunch/dinner enum.
     func testOpenEndedMealNamesSurvive() async throws {
         var names = Set<String>()
-        for court in DiningCourt.allCases {
-            names.formUnion(try await menu(court).meals.map(\.name))
+        for location in try await courts() {
+            names.formUnion(try await menu(location).meals.map(\.name))
         }
         XCTAssertTrue(names.contains("Breakfast"))
         XCTAssertTrue(names.contains("Lunch"))
@@ -38,21 +69,20 @@ final class MenuDecodingTests: XCTestCase {
     }
 
     func testMealsAreSortedByOrderNotByName() async throws {
-        for court in DiningCourt.allCases {
-            let orders = try await menu(court).meals.map(\.order)
-            XCTAssertEqual(orders, orders.sorted(), "\(court.displayName) meals must be in API order")
+        for location in try await allLocations() {
+            let orders = try await menu(location).meals.map(\.order)
+            XCTAssertEqual(orders, orders.sorted(), "\(location.name) meals must be in API order")
         }
     }
 
-    /// `Status: "Closed"` means the court isn't serving that period at all that
-    /// day — it is not a "closed right now" flag. Every closed meal in the
-    /// fixtures carries zero stations, which is why the menu screen filters
-    /// empty meals out of the selector rather than offering a tab that leads
-    /// nowhere.
+    /// `Status: "Closed"` means the location isn't serving that period that day
+    /// — it is not a "closed right now" flag. Every closed meal in the fixtures
+    /// carries zero stations, which is why the menu screen filters empty meals
+    /// out of the selector rather than offering a tab that leads nowhere.
     func testClosedMealsAreEmpty() async throws {
         var sawClosed = false
-        for court in DiningCourt.allCases {
-            for meal in try await menu(court).meals where meal.status.isClosed {
+        for location in try await courts() {
+            for meal in try await menu(location).meals where meal.status.isClosed {
                 sawClosed = true
                 XCTAssertEqual(meal.itemCount, 0, "\(meal.name) is closed but carries items")
             }
@@ -60,17 +90,15 @@ final class MenuDecodingTests: XCTestCase {
         XCTAssertTrue(sawClosed, "fixtures contain closed meals; parsing must surface them")
     }
 
-    /// Hillenbrand has Brunch, Lunch and Late Lunch all closed on the captured
-    /// day, so a court can legitimately have nothing browsable.
     func testACourtCanHaveNoServableMeals() async throws {
-        let menu = try await menu(.hillenbrand)
+        let menu = try await menu(try await named("Hillenbrand"))
         let closed = menu.meals.filter { $0.status.isClosed }
         XCTAssertFalse(closed.isEmpty)
         XCTAssertTrue(closed.allSatisfy { $0.stations.isEmpty })
     }
 
     func testServiceHoursParse() async throws {
-        let breakfast = try await menu(.earhart).meals.first { $0.name == "Breakfast" }
+        let breakfast = try await menu(try await named("Earhart")).meals.first { $0.name == "Breakfast" }
         let hours = try XCTUnwrap(breakfast?.hours)
         XCTAssertEqual(hours.startHour, 7)
         XCTAssertEqual(hours.startMinute, 0)
@@ -90,8 +118,8 @@ final class MenuDecodingTests: XCTestCase {
     /// entirely rather than sending an empty array.
     func testPlaceholderItemsDecodeWithoutAllergens() async throws {
         var placeholders: [MenuItem] = []
-        for court in DiningCourt.allCases {
-            for meal in try await menu(court).meals {
+        for location in try await courts() {
+            for meal in try await menu(location).meals {
                 for station in meal.stations {
                     placeholders += station.items.filter { !$0.hasNutrition }
                 }
@@ -107,14 +135,14 @@ final class MenuDecodingTests: XCTestCase {
     /// An unpublished future date is a valid 200 response, not an error.
     func testUnpublishedDayIsNotAnError() async throws {
         let day = CalendarDay(year: 2026, month: 12, day: 25)
-        let menu = try await provider.menu(for: .earhart, on: day)
+        let menu = try await provider.menu(for: try await named("Earhart"), on: day)
         XCTAssertFalse(menu.isPublished)
         XCTAssertTrue(menu.meals.isEmpty)
     }
 
     func testEmptyStationsAreDropped() async throws {
-        for court in DiningCourt.allCases {
-            for meal in try await menu(court).meals {
+        for location in try await allLocations() {
+            for meal in try await menu(location).meals {
                 XCTAssertTrue(meal.stations.allSatisfy { !$0.items.isEmpty })
             }
         }
@@ -128,6 +156,29 @@ final class MenuDecodingTests: XCTestCase {
             XCTAssertEqual(error, .notFound)
         } catch {
             XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    // MARK: Locations without nutrition
+
+    /// 1bowl and Sushi Boss publish menus where every row is
+    /// `NutritionReady: false`, so the menu screen warns up front rather than
+    /// offering rows that lead nowhere.
+    func testTwoQuickBitesPublishNoNutritionAtAll() async throws {
+        for name in ["1bowl at Meredith Hall", "Sushi Boss at South Hall"] {
+            let menu = try await menu(try await named(name))
+            let plateable = menu.meals.reduce(0) { $0 + $1.plateableItemCount }
+            XCTAssertEqual(plateable, 0, "\(name) is expected to publish no nutrition")
+            XCTAssertGreaterThan(menu.meals.reduce(0) { $0 + $1.itemCount }, 0,
+                                 "\(name) should still list items to browse")
+        }
+    }
+
+    func testOtherNonCourtLocationsDoHaveNutrition() async throws {
+        for name in ["Pete's Za at Tarkington Hall", "Windsor On-the-GO!"] {
+            let menu = try await menu(try await named(name))
+            let plateable = menu.meals.reduce(0) { $0 + $1.plateableItemCount }
+            XCTAssertGreaterThan(plateable, 0, "\(name) should have plateable items")
         }
     }
 }

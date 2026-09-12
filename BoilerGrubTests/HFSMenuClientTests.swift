@@ -19,13 +19,18 @@ final class HFSMenuClientTests: XCTestCase {
         return HFSMenuClient(session: URLSession(configuration: config))
     }
 
+    private func place(_ name: String, id: String = "TEST") -> DiningLocation {
+        DiningLocation(id: id, name: name, shortName: nil, kind: .diningCourt,
+                       upcomingMeals: [], weeklyHours: [])
+    }
+
     private func error(from block: () async throws -> Void) async -> MenuServiceError? {
         do { try await block(); return nil } catch let error as MenuServiceError { return error } catch { return nil }
     }
 
     func testHTTP500IsTreatedAsNotFound() async {
         let client = client(status: 500, body: Data(#"{"Message":"An error has occurred.","ExceptionMessage":"Sequence contains no matching element"}"#.utf8))
-        let result = await error { _ = try await client.menu(for: .earhart, on: .today) }
+        let result = await error { _ = try await client.menu(for: place("Earhart"), on: .today) }
         XCTAssertEqual(result, .notFound, "a 500 from this API means the location doesn't exist")
     }
 
@@ -37,13 +42,13 @@ final class HFSMenuClientTests: XCTestCase {
 
     func testOtherServerErrorsAreReportedAsServerErrors() async {
         let client = client(status: 503)
-        let result = await error { _ = try await client.menu(for: .ford, on: .today) }
+        let result = await error { _ = try await client.menu(for: place("Ford"), on: .today) }
         XCTAssertEqual(result, .server(statusCode: 503))
     }
 
     func testUnparseableBodyIsUnreadableRatherThanACrash() async {
         let client = client(status: 200, body: Data("<html>maintenance</html>".utf8))
-        let result = await error { _ = try await client.menu(for: .wiley, on: .today) }
+        let result = await error { _ = try await client.menu(for: place("Wiley"), on: .today) }
         XCTAssertEqual(result, .unreadableResponse)
     }
 
@@ -51,15 +56,16 @@ final class HFSMenuClientTests: XCTestCase {
     /// rather than throwing, because every DTO field is optional by design.
     func testEmptyJSONObjectDegradesToAnEmptyMenu() async throws {
         let client = client(status: 200, body: Data("{}".utf8))
-        let menu = try await client.menu(for: .windsor, on: CalendarDay(year: 2026, month: 9, day: 11))
+        let menu = try await client.menu(for: place("Windsor", id: "WIND"),
+                                         on: CalendarDay(year: 2026, month: 9, day: 11))
         XCTAssertFalse(menu.isPublished)
         XCTAssertTrue(menu.meals.isEmpty)
-        XCTAssertEqual(menu.court, .windsor)
+        XCTAssertEqual(menu.locationID, "WIND")
     }
 
     func testRequestUsesDisplayNameAndMMDDYYYYPath() async {
         let client = client(status: 200, body: Data("{}".utf8))
-        _ = try? await client.menu(for: .hillenbrand, on: CalendarDay(year: 2026, month: 3, day: 4))
+        _ = try? await client.menu(for: place("Hillenbrand"), on: CalendarDay(year: 2026, month: 3, day: 4))
         let path = StubURLProtocol.lastRequest?.url?.path ?? ""
         XCTAssertTrue(path.contains("/locations/Hillenbrand/03-04-2026"),
                       "must use the display name and MM-DD-YYYY, got \(path)")
@@ -67,12 +73,39 @@ final class HFSMenuClientTests: XCTestCase {
 
     func testRequestAsksForJSON() async {
         let client = client(status: 200, body: Data("{}".utf8))
-        _ = try? await client.menu(for: .earhart, on: .today)
+        _ = try? await client.menu(for: place("Earhart"), on: .today)
         XCTAssertEqual(StubURLProtocol.lastRequest?.value(forHTTPHeaderField: "Accept"), "application/json")
     }
 
     func testUsesHTTPSToAvoidTheUpstreamRedirect() {
         XCTAssertEqual(HFSMenuClient.baseURL.scheme, "https")
+    }
+
+    /// Quick Bites and On-the-GO! names carry spaces, apostrophes and
+    /// exclamation marks; an unencoded path 500s.
+    func testLocationNamesArePercentEncodedInThePath() async {
+        let client = client(status: 200, body: Data("{}".utf8))
+        _ = try? await client.menu(for: place("Pete's Za at Tarkington Hall"),
+                                   on: CalendarDay(year: 2026, month: 9, day: 11))
+        let absolute = StubURLProtocol.lastRequest?.url?.absoluteString ?? ""
+        XCTAssertTrue(absolute.contains("Pete's%20Za%20at%20Tarkington%20Hall"),
+                      "expected an encoded path, got \(absolute)")
+    }
+
+    func testLocationsListDecodes() async throws {
+        let body = Data(#"{"Types":["Dining Courts"],"Location":[{"LocationId":"ERHT","Name":"Earhart","Type":"Dining Courts","UpcomingMeals":[],"NormalHours":[]}]}"#.utf8)
+        let client = client(status: 200, body: body)
+        let locations = try await client.locations()
+        XCTAssertEqual(locations.map(\.id), ["ERHT"])
+        XCTAssertEqual(locations.first?.kind, .diningCourt)
+    }
+
+    /// A locations payload with nothing usable in it is a broken response, not
+    /// an empty campus.
+    func testEmptyLocationsListIsUnreadable() async {
+        let client = client(status: 200, body: Data(#"{"Location":[]}"#.utf8))
+        let result = await error { _ = try await client.locations() }
+        XCTAssertEqual(result, .unreadableResponse)
     }
 }
 
