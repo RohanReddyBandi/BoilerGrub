@@ -18,7 +18,7 @@ struct LoadingTape: View {
                             .padding(.bottom, 18)
                         ForEach(0..<4, id: \.self) { row in
                             if row > 0 { HairlineRule(color: Palette.faint.opacity(0.35)) }
-                            LeaderRow {
+                            TicketRow {
                                 Rectangle()
                                     .fill(Palette.faint)
                                     .frame(width: row.isMultiple(of: 2) ? 150 : 110, height: 11)
@@ -73,13 +73,13 @@ struct TicketNotice<Action: View>: View {
 /// deliberately worded so it doesn't read as a failure.
 struct NotPostedState: View {
     let day: CalendarDay
-    let court: DiningCourt
+    let locationName: String
 
     var body: some View {
         TicketNotice(
             label: "not posted",
-            title: "\(court.displayName) hasn't posted this day yet.",
-            detail: "Dining courts usually publish a few days ahead. Try a nearer date."
+            title: "\(locationName) hasn't posted this day yet.",
+            detail: "Menus usually go up a few days ahead. Try a nearer date."
         ) {
             EmptyView()
         }
@@ -87,16 +87,37 @@ struct NotPostedState: View {
 }
 
 struct NoMealsState: View {
-    let court: DiningCourt
+    let locationName: String
 
     var body: some View {
         TicketNotice(
             label: "no service",
-            title: "Nothing is being served at \(court.displayName) on this day.",
-            detail: "The court is likely closed — try another dining court."
+            title: "Nothing is being served at \(locationName) on this day.",
+            detail: "It's likely closed all day — try another spot or another date."
         ) {
             EmptyView()
         }
+    }
+}
+
+/// Two Quick Bites locations — 1bowl and Sushi Boss — publish menus where every
+/// row is `NutritionReady: false`. The menu is worth browsing, but nothing in
+/// it can be plated, and saying so up front beats letting someone tap a row and
+/// find a dead end.
+struct NoNutritionNotice: View {
+    let locationName: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            StampLabel("menu only", color: Palette.gold, font: Type.micro)
+            Text("\(locationName) doesn't publish nutrition, so nothing here can be added to a plate.")
+                .font(Type.prose)
+                .foregroundStyle(Palette.muted)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 14)
+        .padding(.bottom, 10)
+        .accessibilityElement(children: .combine)
     }
 }
 

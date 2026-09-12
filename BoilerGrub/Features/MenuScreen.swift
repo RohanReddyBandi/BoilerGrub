@@ -1,21 +1,21 @@
 import SwiftUI
 
 struct MenuScreen: View {
-    @Binding var court: DiningCourt
-    @Binding var day: CalendarDay
-    let onOpenToday: () -> Void
+    let location: DiningLocation
 
     @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var day: CalendarDay = .today
     @State private var state: LoadState<DayMenu> = .idle
     @State private var selectedMealID: String?
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                CourtHeader(court: $court, onOpenToday: onOpenToday)
-                DayStrip(day: $day)
+                LocationHeader(location: location, onBack: { dismiss() })
+                DateBar(day: $day).padding(.top, 4)
 
-                Perforation().padding(.vertical, 20)
+                Perforation().padding(.vertical, 18)
 
                 switch state {
                 case .idle, .loading:
@@ -23,7 +23,7 @@ struct MenuScreen: View {
                 case .failed(let error):
                     FailureState(error: error) { await load(force: true) }
                 case .loaded(let menu):
-                    MenuBody(menu: menu, court: court, selectedMealID: $selectedMealID)
+                    MenuBody(menu: menu, location: location, selectedMealID: $selectedMealID)
                 }
             }
             .padding(.horizontal, 22)
@@ -32,22 +32,16 @@ struct MenuScreen: View {
         .scrollIndicators(.hidden)
         .background(Palette.ground)
         .toolbar(.hidden, for: .navigationBar)
-        .task(id: TaskKey(court: court, day: day)) {
+        .task(id: day) {
             await load()
         }
-    }
-
-    /// Reloads whenever either dimension of the request changes.
-    private struct TaskKey: Equatable {
-        let court: DiningCourt
-        let day: CalendarDay
     }
 
     private func load(force: Bool = false) async {
         if force { state = .loading } else if state.value == nil { state = .loading }
 
         do {
-            let menu = try await services.menu.menu(for: court, on: day)
+            let menu = try await services.menu.menu(for: location, on: day)
             state = .loaded(menu)
             selectedMealID = defaultMeal(in: menu)?.id
         } catch is CancellationError {
@@ -75,41 +69,33 @@ struct MenuScreen: View {
 
 // MARK: - Header
 
-private struct CourtHeader: View {
-    @Binding var court: DiningCourt
-    let onOpenToday: () -> Void
+private struct LocationHeader: View {
+    let location: DiningLocation
+    let onBack: () -> Void
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Menu {
-                Picker("Dining court", selection: $court) {
-                    ForEach(DiningCourt.allCases) { option in
-                        Text(option.displayName).tag(option)
-                    }
+        VStack(alignment: .leading, spacing: 8) {
+            Button(action: onBack) {
+                HStack(spacing: 6) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 10, weight: .semibold))
+                    StampLabel("all spots", color: Palette.gold, font: Type.micro)
                 }
-            } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 9) {
-                    Text(court.displayName)
-                        .font(Type.display)
-                        .foregroundStyle(Palette.bone)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Palette.gold)
-                }
+                .foregroundStyle(Palette.gold)
+                .padding(.vertical, 6)
+                .contentShape(Rectangle())
             }
-            .accessibilityLabel("Dining court: \(court.displayName). Double tap to change.")
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back to all food spots")
 
-            Spacer(minLength: 12)
+            Text(location.displayName)
+                .font(Type.title)
+                .foregroundStyle(Palette.bone)
+                .fixedSize(horizontal: false, vertical: true)
 
-            Button(action: onOpenToday) {
-                StampLabel("today", color: Palette.gold, font: Type.labelLarge)
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 7)
-                    .overlay(Rectangle().stroke(Palette.goldRule, lineWidth: 1))
-            }
-            .accessibilityLabel("Today's log")
+            StampLabel(location.kind.label, color: Palette.muted, font: Type.micro)
         }
-        .padding(.top, 14)
+        .padding(.top, 8)
     }
 }
 
@@ -117,7 +103,7 @@ private struct CourtHeader: View {
 
 private struct MenuBody: View {
     let menu: DayMenu
-    let court: DiningCourt
+    let location: DiningLocation
     @Binding var selectedMealID: String?
 
     private var servableMeals: [Meal] {
@@ -130,17 +116,20 @@ private struct MenuBody: View {
 
     var body: some View {
         if !menu.isPublished {
-            NotPostedState(day: menu.day, court: court)
+            NotPostedState(day: menu.day, locationName: location.displayName)
         } else if servableMeals.isEmpty {
-            NoMealsState(court: court)
+            NoMealsState(locationName: location.displayName)
         } else {
             VStack(alignment: .leading, spacing: 0) {
                 MealSelector(meals: servableMeals, selection: $selectedMealID)
 
                 if let meal = selectedMeal {
                     MealHeading(meal: meal)
+                    if meal.plateableItemCount == 0 {
+                        NoNutritionNotice(locationName: location.displayName)
+                    }
                     ForEach(meal.stations) { station in
-                        StationBlock(station: station, court: court, mealName: meal.name)
+                        StationBlock(station: station, location: location, mealName: meal.name)
                     }
                 }
 
@@ -217,7 +206,7 @@ private struct MealHeading: View {
 /// notches read as stations along a serving line.
 private struct StationBlock: View {
     let station: Station
-    let court: DiningCourt
+    let location: DiningLocation
     let mealName: String
 
     var body: some View {
@@ -232,7 +221,7 @@ private struct StationBlock: View {
                     if index > 0 {
                         HairlineRule(color: Palette.faint.opacity(0.35))
                     }
-                    MenuItemRow(item: item, court: court, mealName: mealName)
+                    MenuItemRow(item: item, location: location, mealName: mealName)
                 }
             }
         }
@@ -242,7 +231,7 @@ private struct StationBlock: View {
 
 private struct MenuItemRow: View {
     let item: MenuItem
-    let court: DiningCourt
+    let location: DiningLocation
     let mealName: String
 
     @Environment(Plate.self) private var plate
@@ -251,7 +240,7 @@ private struct MenuItemRow: View {
         if item.hasNutrition {
             NavigationLink {
                 ItemDetailScreen(itemID: item.id, fallbackName: item.name,
-                                 court: court, mealName: mealName)
+                                 location: location, mealName: mealName)
             } label: {
                 rowContent
             }
@@ -271,7 +260,7 @@ private struct MenuItemRow: View {
         // placed in an HStack beside it: as a sibling view it gets pinned to the
         // first line's trailing edge, which on a wrapped name drops the dot into
         // the middle of the dish ("Yellow Long · Grain Rice").
-        return LeaderRow {
+        return TicketRow {
             (
                 Text(item.name)
                     .font(Type.dish)
@@ -311,7 +300,7 @@ private struct MenuItemRow: View {
 
 #Preview("Menu") {
     NavigationStack {
-        MenuScreen(court: .constant(.earhart), day: .constant(.today), onOpenToday: {})
+        MenuScreen(location: FixtureMenuProvider().fixtureLocation())
     }
     .environment(AppServices.preview())
     .environment(Plate())

@@ -41,7 +41,7 @@ struct PlateScreen: View {
                 SheetHeader(title: "your plate", onClose: { dismiss() }) {
                     if !plate.isEmpty {
                         Button { plate.clear() } label: {
-                            StampLabel("clear", color: Palette.ember, font: Type.micro)
+                            StampLabel("clear", color: Palette.muted, font: Type.micro)
                                 .padding(.leading, 16)
                                 .padding(.vertical, 8)
                                 .contentShape(Rectangle())
@@ -156,7 +156,7 @@ private struct PlateRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            LeaderRow {
+            TicketRow {
                 Text(entry.detail.name)
                     .font(Type.dish)
                     .foregroundStyle(Palette.bone)
@@ -251,7 +251,7 @@ private struct SaveBar: View {
                     Spacer()
                     Text(Figure.calories(totals.calories))
                         .font(Type.figureTotal)
-                        .foregroundStyle(Palette.bone)
+                        .foregroundStyle(Palette.goldBright)
                         .monospacedDigit()
                         .lineLimit(1)
                         .minimumScaleFactor(0.6)

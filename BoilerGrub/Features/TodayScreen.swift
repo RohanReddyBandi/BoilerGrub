@@ -101,7 +101,7 @@ private struct DayTotals: View {
             HStack(alignment: .lastTextBaseline, spacing: 12) {
                 Text(Figure.calories(totals.calories))
                     .font(Type.figureHero)
-                    .foregroundStyle(Palette.bone)
+                    .foregroundStyle(Palette.goldBright)
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.5)
@@ -149,7 +149,7 @@ private struct LoggedPlateBlock: View {
                 .padding(.bottom, 14)
 
                 ForEach(plate.orderedItems) { item in
-                    LeaderRow {
+                    TicketRow {
                         Text(item.name)
                             .font(Type.dish)
                             .foregroundStyle(Palette.bone)
@@ -216,7 +216,7 @@ private struct SyncBadge: View {
         case .synced:
             StampLabel("in health", color: Palette.gold, font: Type.micro)
         case .failed:
-            StampLabel("not synced", color: Palette.ember, font: Type.micro)
+            StampLabel("not synced", color: Palette.muted, font: Type.micro)
         case .declined:
             StampLabel("health off", color: Palette.faint, font: Type.micro)
         case .notSynced:

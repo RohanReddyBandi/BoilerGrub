@@ -31,7 +31,7 @@ struct TrayBar: View {
 
                         Text(Figure.calories(totals.calories))
                             .font(.system(size: 30, weight: .light, design: .monospaced))
-                            .foregroundStyle(Palette.bone)
+                            .foregroundStyle(Palette.goldBright)
                             .monospacedDigit()
                             .lineLimit(1)
                             .minimumScaleFactor(0.6)

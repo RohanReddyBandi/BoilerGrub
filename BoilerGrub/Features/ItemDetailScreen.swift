@@ -9,7 +9,7 @@ import SwiftUI
 struct ItemDetailScreen: View {
     let itemID: String
     let fallbackName: String
-    let court: DiningCourt
+    let location: DiningLocation
     let mealName: String
 
     @Environment(AppServices.self) private var services
@@ -85,7 +85,7 @@ struct ItemDetailScreen: View {
         if plate.contains(itemID) {
             plate.setServings(servings, for: itemID)
         } else {
-            plate.add(detail, court: court, mealName: mealName, servings: servings)
+            plate.add(detail, location: location, mealName: mealName, servings: servings)
         }
         dismiss()
     }
@@ -165,7 +165,7 @@ private struct CalorieFigure: View {
             HStack(alignment: .lastTextBaseline, spacing: 12) {
                 Text(Figure.calories(calories))
                     .font(Type.figureHero)
-                    .foregroundStyle(Palette.bone)
+                    .foregroundStyle(Palette.goldBright)
                     .monospacedDigit()
                     .minimumScaleFactor(0.5)
                     .lineLimit(1)
@@ -231,6 +231,12 @@ private struct NutritionTape: View {
 
     /// The four macros already have the top of the screen to themselves, and
     /// serving size is stated in the header.
+    private func accessibilityLabel(for row: NutritionRow) -> String {
+        var parts = [row.name, row.displayValue ?? "no value"]
+        if let daily = row.dailyValue { parts.append("\(daily) of daily value") }
+        return parts.joined(separator: ", ")
+    }
+
     private var secondaryRows: [NutritionRow] {
         let shown = Set([
             NutritionRow.Key.servingSize, NutritionRow.Key.calories,
@@ -247,27 +253,31 @@ private struct NutritionTape: View {
                     .padding(.bottom, 14)
 
                 ForEach(secondaryRows) { row in
-                    LeaderRow {
+                    TicketRow {
                         Text(row.name.lowercased())
                             .font(Type.figureSmall)
                             .foregroundStyle(Palette.muted)
+                            .lineLimit(1)
                     } trailing: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 0) {
                             Text(row.displayValue ?? "—")
                                 .font(Type.figureSmall)
                                 .foregroundStyle(Palette.bone)
                                 .monospacedDigit()
-                            if let daily = row.dailyValue {
-                                Text(daily)
-                                    .font(Type.micro)
-                                    .foregroundStyle(Palette.faint)
-                                    .monospacedDigit()
-                                    .frame(width: 34, alignment: .trailing)
-                            }
+                                .frame(width: TapeColumn.value, alignment: .trailing)
+                            // The percentage column is always reserved, even
+                            // when a row has no daily value, so values above and
+                            // below it stay on one right edge.
+                            Text(row.dailyValue ?? "")
+                                .font(Type.micro)
+                                .foregroundStyle(Palette.faint)
+                                .monospacedDigit()
+                                .frame(width: TapeColumn.dailyValue, alignment: .trailing)
                         }
                     }
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 10)
                     .accessibilityElement(children: .combine)
+                    .accessibilityLabel(accessibilityLabel(for: row))
                 }
             }
         }
@@ -396,7 +406,7 @@ private struct AddToPlateBar: View {
 
             if isOnPlate {
                 Button(role: .destructive, action: onRemove) {
-                    StampLabel("remove from plate", color: Palette.ember, font: Type.micro)
+                    StampLabel("remove from plate", color: Palette.muted, font: Type.micro)
                         .padding(.vertical, 8)
                 }
                 .buttonStyle(.plain)
