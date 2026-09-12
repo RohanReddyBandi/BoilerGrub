@@ -47,7 +47,7 @@ final class Plate {
     }
 
     /// Adds an item, or bumps an existing entry by one serving.
-    func add(_ detail: ItemDetail, court: DiningCourt, mealName: String?, servings: Double = 1) {
+    func add(_ detail: ItemDetail, location: DiningLocation, mealName: String?, servings: Double = 1) {
         guard detail.facts != nil else { return }   // placeholder rows have nothing to total
 
         if let index = entries.firstIndex(where: { $0.id == detail.id }) {
@@ -55,7 +55,7 @@ final class Plate {
         } else {
             entries.append(
                 Entry(detail: detail,
-                      courtName: court.displayName,
+                      courtName: location.displayName,
                       mealName: mealName,
                       servings: min(servings, Self.maxServings))
             )

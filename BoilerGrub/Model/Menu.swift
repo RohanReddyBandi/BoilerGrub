@@ -1,8 +1,11 @@
 import Foundation
 
-/// One dining court on one calendar day.
+/// One food location on one calendar day.
 struct DayMenu: Codable, Equatable, Sendable {
-    let court: DiningCourt
+    /// The API's `LocationId`, e.g. "ERHT".
+    let locationID: String
+    /// The location's display name, which is also its menu URL path segment.
+    let locationName: String
     let day: CalendarDay
     /// False when the court hasn't posted this day yet. This is a *valid*
     /// response, not an error, and gets its own empty state.
@@ -28,6 +31,12 @@ struct Meal: Codable, Identifiable, Equatable, Sendable {
     let stations: [Station]
 
     var itemCount: Int { stations.reduce(0) { $0 + $1.items.count } }
+
+    /// How many rows actually have nutrition behind them. Two Quick Bites
+    /// locations publish menus where this is zero for every meal.
+    var plateableItemCount: Int {
+        stations.reduce(0) { $0 + $1.items.filter(\.hasNutrition).count }
+    }
 }
 
 enum ServiceStatus: Codable, Equatable, Sendable {
@@ -48,7 +57,7 @@ enum ServiceStatus: Codable, Equatable, Sendable {
 }
 
 /// Service hours, as wall-clock times on the menu's own day.
-struct ServiceHours: Codable, Equatable, Sendable {
+struct ServiceHours: Codable, Hashable, Sendable {
     let startHour: Int, startMinute: Int
     let endHour: Int, endMinute: Int
 

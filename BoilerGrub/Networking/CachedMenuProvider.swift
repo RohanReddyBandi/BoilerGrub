@@ -17,13 +17,40 @@ struct CachedMenuProvider: MenuProviding {
     /// Matches the upstream `Cache-Control: public, max-age=600`.
     private static let liveMenuTTL: TimeInterval = 600
 
+    /// Location hours change rarely, and open/closed is recomputed from the
+    /// cached service windows against the current clock — so an hour-old copy
+    /// still yields a correct answer.
+    private static let locationsTTL: TimeInterval = 3600
+
     init(upstream: MenuProviding, cache: DiskCache = DiskCache()) {
         self.upstream = upstream
         self.cache = cache
     }
 
-    func menu(for court: DiningCourt, on day: CalendarDay) async throws -> DayMenu {
-        let key = "menu-\(court.rawValue)-\(day.cacheKey)"
+    func locations() async throws -> [DiningLocation] {
+        let key = "locations"
+
+        if let hit = await cache.read(key, as: [DiningLocation].self, maxAge: Self.locationsTTL) {
+            return hit.value
+        }
+
+        do {
+            let locations = try await upstream.locations()
+            await cache.write(locations, key: key)
+            return locations
+        } catch {
+            // Falling back to a stale list is what lets the landing page still
+            // render (with hours computed from the windows it already has)
+            // when the network is gone.
+            if let stale = await cache.read(key, as: [DiningLocation].self, maxAge: nil) {
+                return stale.value
+            }
+            throw error
+        }
+    }
+
+    func menu(for location: DiningLocation, on day: CalendarDay) async throws -> DayMenu {
+        let key = "menu-\(location.id)-\(day.cacheKey)"
         let ttl: TimeInterval? = day.isPast ? nil : Self.liveMenuTTL
 
         if let hit = await cache.read(key, as: DayMenu.self, maxAge: ttl) {
@@ -31,7 +58,7 @@ struct CachedMenuProvider: MenuProviding {
         }
 
         do {
-            let menu = try await upstream.menu(for: court, on: day)
+            let menu = try await upstream.menu(for: location, on: day)
             // Never cache an unpublished day: the court simply hasn't posted it
             // yet, and it will be published later. Caching the empty answer
             // would hide the real menu when it arrives.

@@ -3,7 +3,8 @@ import OSLog
 
 /// Live client for `api.hfs.purdue.edu`.
 ///
-/// Two endpoints, both undocumented:
+/// Three endpoints, all undocumented:
+///   `GET /menus/v2/locations`                       → every location + hours
 ///   `GET /menus/v2/locations/{Name}/{MM-DD-YYYY}/`  → a day's menu, no nutrition
 ///   `GET /menus/v2/items/{ID}`                      → nutrition for one item
 struct HFSMenuClient: MenuProviding {
@@ -32,14 +33,24 @@ struct HFSMenuClient: MenuProviding {
         return URLSession(configuration: config)
     }
 
-    func menu(for court: DiningCourt, on day: CalendarDay) async throws -> DayMenu {
+    func locations() async throws -> [DiningLocation] {
+        let response: LocationsResponse = try await get(Self.baseURL.appendingPathComponent("locations"))
+        let locations = response.toDomain()
+        guard !locations.isEmpty else { throw MenuServiceError.unreadableResponse }
+        return locations
+    }
+
+    func menu(for location: DiningLocation, on day: CalendarDay) async throws -> DayMenu {
+        // `appendingPathComponent` percent-encodes for us, which matters here:
+        // the non-court names carry spaces, apostrophes and exclamation marks
+        // ("Pete's Za at Tarkington Hall", "Earhart On-the-GO!").
         let url = Self.baseURL
             .appendingPathComponent("locations")
-            .appendingPathComponent(court.apiName)
+            .appendingPathComponent(location.name)
             .appendingPathComponent(day.apiPath)
 
         let response: MenuResponse = try await get(url)
-        return response.toDomain(court: court, day: day)
+        return response.toDomain(location: location, day: day)
     }
 
     func itemDetail(id: String) async throws -> ItemDetail {

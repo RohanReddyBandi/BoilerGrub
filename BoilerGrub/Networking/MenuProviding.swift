@@ -7,7 +7,10 @@ import Foundation
 /// run entirely off the saved fixtures in previews and tests, and what will
 /// make the inevitable upstream breakage a one-file problem.
 protocol MenuProviding: Sendable {
-    func menu(for court: DiningCourt, on day: CalendarDay) async throws -> DayMenu
+    /// Every campus food location, with the hours needed to tell open from
+    /// closed. Dining courts sort first.
+    func locations() async throws -> [DiningLocation]
+    func menu(for location: DiningLocation, on day: CalendarDay) async throws -> DayMenu
     func itemDetail(id: String) async throws -> ItemDetail
 }
 
@@ -38,7 +41,7 @@ enum MenuServiceError: LocalizedError, Equatable {
     /// What the empty state offers the reader to do about it.
     var recoveryHint: String? {
         switch self {
-        case .notFound: "Try another dining court or a different day."
+        case .notFound: "Try another spot or a different day."
         case .offline: "Menus you've already opened are still available."
         case .server, .unreadableResponse, .transport: "Try again in a moment."
         }

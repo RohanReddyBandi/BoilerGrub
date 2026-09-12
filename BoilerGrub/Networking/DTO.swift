@@ -87,7 +87,7 @@ struct NutritionResponse: Decodable {
 // MARK: - Wire → domain
 
 extension MenuResponse {
-    func toDomain(court: DiningCourt, day: CalendarDay) -> DayMenu {
+    func toDomain(location: DiningLocation, day: CalendarDay) -> DayMenu {
         let meals = (self.meals ?? [])
             .map { $0.toDomain() }
             // Sort by the API's own `order`, never by meal name: the set of
@@ -95,7 +95,8 @@ extension MenuResponse {
             .sorted { $0.order < $1.order }
 
         return DayMenu(
-            court: court,
+            locationID: location.id,
+            locationName: location.name,
             day: day,
             isPublished: isPublished ?? false,
             notes: notes?.nonEmpty,
@@ -209,5 +210,133 @@ private extension String {
     var nonEmpty: String? {
         let trimmed = trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
+    }
+}
+
+// MARK: - Locations
+
+struct LocationsResponse: Decodable {
+    let types: [String]?
+    let location: [LocationResponse]?
+    enum CodingKeys: String, CodingKey { case types = "Types", location = "Location" }
+}
+
+struct LocationResponse: Decodable {
+    let locationId: String?
+    let name: String?
+    let shortName: String?
+    let type: String?
+    let upcomingMeals: [UpcomingMealResponse]?
+    let normalHours: [NormalHoursResponse]?
+
+    enum CodingKeys: String, CodingKey {
+        case locationId = "LocationId", name = "Name", shortName = "ShortName"
+        case type = "Type", upcomingMeals = "UpcomingMeals", normalHours = "NormalHours"
+    }
+}
+
+struct UpcomingMealResponse: Decodable {
+    let name: String?
+    /// Absolute, with a timezone offset: "2026-09-11T17:00:00-04:00".
+    let startTime: String?
+    let endTime: String?
+    enum CodingKeys: String, CodingKey {
+        case name = "Name", startTime = "StartTime", endTime = "EndTime"
+    }
+}
+
+struct NormalHoursResponse: Decodable {
+    let effectiveDate: String?
+    let days: [NormalDayResponse]?
+    enum CodingKeys: String, CodingKey { case effectiveDate = "EffectiveDate", days = "Days" }
+}
+
+struct NormalDayResponse: Decodable {
+    /// 0 = Sunday.
+    let dayOfWeek: Int?
+    let meals: [NormalMealResponse]?
+    enum CodingKeys: String, CodingKey { case dayOfWeek = "DayOfWeek", meals = "Meals" }
+}
+
+struct NormalMealResponse: Decodable {
+    let name: String?
+    let hours: HoursResponse?
+    enum CodingKeys: String, CodingKey { case name = "Name", hours = "Hours" }
+}
+
+extension LocationsResponse {
+    func toDomain() -> [DiningLocation] {
+        (location ?? [])
+            .compactMap { $0.toDomain() }
+            .sorted {
+                ($0.kind.sortOrder, $0.name) < ($1.kind.sortOrder, $1.name)
+            }
+    }
+}
+
+extension LocationResponse {
+    func toDomain() -> DiningLocation? {
+        // Without an id and a name there is nothing to key a cache on and no
+        // path to request a menu with, so the row is unusable.
+        guard let id = locationId?.trimmed, let name = name?.trimmed else { return nil }
+
+        return DiningLocation(
+            id: id,
+            name: name,
+            shortName: shortName?.trimmed,
+            kind: LocationKind(apiValue: type),
+            upcomingMeals: (upcomingMeals ?? []).compactMap { $0.toDomain() },
+            // Only the most recent schedule matters; earlier ones are historical.
+            weeklyHours: (normalHours ?? [])
+                .sorted { ($0.effectiveDate ?? "") > ($1.effectiveDate ?? "") }
+                .first
+                .map { ($0.days ?? []).compactMap { $0.toDomain() } } ?? []
+        )
+    }
+}
+
+extension UpcomingMealResponse {
+    func toDomain() -> ServiceWindow? {
+        guard let start = Self.parse(startTime), let end = Self.parse(endTime) else { return nil }
+        return ServiceWindow(name: name?.trimmed ?? "Service", start: start, end: end)
+    }
+
+    /// The offset-carrying form is what the API sends, but a bare local time
+    /// would still be better than dropping the window entirely.
+    private static func parse(_ raw: String?) -> Date? {
+        guard let raw else { return nil }
+        let withOffset = ISO8601DateFormatter()
+        withOffset.formatOptions = [.withInternetDateTime]
+        if let date = withOffset.date(from: raw) { return date }
+
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = fractional.date(from: raw) { return date }
+
+        let naive = ISO8601DateFormatter()
+        naive.formatOptions = [.withFullDate, .withTime, .withColonSeparatorInTime]
+        naive.timeZone = .current
+        return naive.date(from: raw)
+    }
+}
+
+extension NormalDayResponse {
+    func toDomain() -> WeeklyDay? {
+        guard let dayOfWeek, (0...6).contains(dayOfWeek) else { return nil }
+        return WeeklyDay(
+            dayOfWeek: dayOfWeek,
+            meals: (meals ?? []).compactMap { meal in
+                guard let hours = ServiceHours(start: meal.hours?.startTime, end: meal.hours?.endTime)
+                else { return nil }
+                return WeeklyMeal(name: meal.name?.trimmed ?? "Service", hours: hours)
+            }
+        )
+    }
+}
+
+private extension String {
+    var trimmed: String? {
+        let value = trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
     }
 }

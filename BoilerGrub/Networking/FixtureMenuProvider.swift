@@ -19,22 +19,33 @@ struct FixtureMenuProvider: MenuProviding {
         self.bundle = bundle
     }
 
-    func menu(for court: DiningCourt, on day: CalendarDay) async throws -> DayMenu {
+    func locations() async throws -> [DiningLocation] {
+        try await pause()
+        if let failure { throw failure }
+
+        guard let data = try loadJSON(named: "locations"),
+              let response = try? JSONDecoder().decode(LocationsResponse.self, from: data) else {
+            throw MenuServiceError.unreadableResponse
+        }
+        return response.toDomain()
+    }
+
+    func menu(for location: DiningLocation, on day: CalendarDay) async throws -> DayMenu {
         try await pause()
         if let failure { throw failure }
 
         // Prefer an exact date match, then fall back to whichever day was
-        // captured for that court — a preview asking for "today" should still
-        // get a real menu rather than an empty state.
-        let exact = "menu-\(court.apiName)-\(day.apiPath)"
-        let data = try loadJSON(named: exact)
-            ?? loadJSON(matchingPrefix: "menu-\(court.apiName)-")
+        // captured for that location — a preview asking for "today" should
+        // still get a real menu rather than an empty state.
+        let slug = FixtureSlug.make(location.name)
+        let data = try loadJSON(named: "menu-\(slug)-\(day.apiPath)")
+            ?? loadJSON(matchingPrefix: "menu-\(slug)-")
             ?? { throw MenuServiceError.notFound }()
 
         guard let response = try? JSONDecoder().decode(MenuResponse.self, from: data) else {
             throw MenuServiceError.unreadableResponse
         }
-        return response.toDomain(court: court, day: day)
+        return response.toDomain(location: location, day: day)
     }
 
     func itemDetail(id: String) async throws -> ItemDetail {
@@ -69,6 +80,17 @@ struct FixtureMenuProvider: MenuProviding {
             .first
         else { return nil }
         return try Data(contentsOf: match)
+    }
+
+    /// A location from the bundled `locations.json`, for previews that need one
+    /// without an await.
+    func fixtureLocation(id: String = "ERHT") -> DiningLocation {
+        let fallback = DiningLocation(id: id, name: "Earhart", shortName: nil,
+                                      kind: .diningCourt, upcomingMeals: [], weeklyHours: [])
+        guard let data = try? loadJSON(named: "locations"),
+              let response = try? JSONDecoder().decode(LocationsResponse.self, from: data ?? Data())
+        else { return fallback }
+        return response.toDomain().first { $0.id == id } ?? fallback
     }
 
     /// Every item id that has a bundled nutrition fixture. Used by previews to
