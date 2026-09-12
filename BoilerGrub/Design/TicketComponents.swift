@@ -102,44 +102,38 @@ struct StampLabel: View {
     }
 }
 
-// MARK: - Leader row
+// MARK: - Rows
 
-/// A name on the left, a figure on the right, and a run of dots between them —
-/// the way a printed menu or a receipt connects an item to its price. The dots
-/// are what stop the eye from losing the line on a wide phone.
-struct LeaderRow<Leading: View, Trailing: View>: View {
+/// A name on the left, a figure on the right, and clean air between them.
+///
+/// This replaced a dot-leader row. Leaders are a printed-menu device for
+/// connecting a dish to a price across a wide measure, but on a phone they
+/// added texture to every single line and made the screen busier than the data
+/// warranted. Alignment does the same job silently.
+struct TicketRow<Leading: View, Trailing: View>: View {
+    var alignment: VerticalAlignment = .firstTextBaseline
     @ViewBuilder var leading: Leading
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 7) {
+        HStack(alignment: alignment, spacing: 14) {
             leading
-            LeaderDots()
+            Spacer(minLength: 8)
             trailing
         }
     }
 }
 
-/// The run of dots itself. Expands to fill whatever space is left over.
-struct LeaderDots: View {
-    var body: some View {
-        Canvas { context, size in
-            let y = size.height / 2
-            var path = Path()
-            path.move(to: CGPoint(x: 0, y: y))
-            path.addLine(to: CGPoint(x: size.width, y: y))
-            context.stroke(
-                path,
-                with: .color(Palette.faint),
-                style: StrokeStyle(lineWidth: 1, lineCap: .round, dash: [0.5, 4])
-            )
-        }
-        .frame(height: 4)
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-    }
+/// Column widths for the nutrition tape.
+///
+/// These are fixed rather than intrinsic so that every value lands on the same
+/// right edge and every percentage lands on its own. Previously the value
+/// column was ragged and a row with no percentage expanded into the space where
+/// percentages sit, which is what made the column look broken.
+enum TapeColumn {
+    static let value: CGFloat = 86
+    static let dailyValue: CGFloat = 44
 }
-
 // MARK: - Screen chrome
 
 /// Every screen sits on the same ground colour, edge to edge.

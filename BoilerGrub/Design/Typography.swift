@@ -27,7 +27,10 @@ enum Type {
 
     // MARK: Mono — numbers and metadata
 
-    /// The hero calorie figure. Large enough to be the first thing read.
+    /// The hero calorie figure. Large enough to be the first thing read, and
+    /// set in gold rather than bone — putting Purdue's colour on the single
+    /// most important number is what makes the palette read as black-and-gold
+    /// rather than black-with-gold-trim.
     static let figureHero = Font.system(size: 72, weight: .light, design: .monospaced)
     /// Plate and daily totals.
     static let figureTotal = Font.system(size: 44, weight: .light, design: .monospaced)

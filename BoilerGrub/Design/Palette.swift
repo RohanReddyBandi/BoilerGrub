@@ -1,31 +1,49 @@
 import SwiftUI
 
-/// The app commits to a single dark "menu board" surface rather than tracking
-/// the system appearance. A chalkboard is not a thing that has a light mode.
-/// `UIUserInterfaceStyle = Dark` is pinned in the Info.plist to match.
+/// Black and old gold, and nothing else.
+///
+/// Every value below is either near-black, Purdue old gold (#CEB888), or gold
+/// stepped down in opacity against that black. There is no third hue in the
+/// app — no red for destructive actions, no grey that isn't gold-tinted. What
+/// used to be a warm bone and an olive-grey secondary are gone; "remove" and
+/// "delete" are distinguished by wording and weight rather than by colour.
+///
+/// The app commits to a single dark surface rather than tracking the system
+/// appearance — `UIUserInterfaceStyle = Dark` is pinned in the Info.plist. A
+/// menu board doesn't have a light mode.
 enum Palette {
-    /// Purdue black, warmed very slightly so it doesn't read as pure #000 on OLED.
-    static let ground = Color(red: 0.055, green: 0.055, blue: 0.051)
 
-    /// One step up from the ground, for the rare recessed area. Not a card.
-    static let groundRaised = Color(red: 0.094, green: 0.094, blue: 0.086)
+    /// Purdue black. A hair off pure #000 so large fields don't smear on OLED.
+    static let ground = Color(red: 0.039, green: 0.039, blue: 0.039)
 
-    /// Purdue old gold, #CEB888.
+    /// One step up, for the rare recessed strip. Never a card.
+    static let groundRaised = Color(red: 0.078, green: 0.075, blue: 0.071)
+
+    /// Purdue old gold, #CEB888. The identity colour, and the colour the most
+    /// important figures on any screen are set in.
     static let gold = Color(red: 0.808, green: 0.722, blue: 0.533)
 
-    /// Gold at rest — rules and ticks, present but not shouting.
-    static let goldRule = Color(red: 0.808, green: 0.722, blue: 0.533).opacity(0.45)
+    /// Gold lifted slightly for the hero numerals, so they hold their own at
+    /// large sizes against a black field.
+    static let goldBright = Color(red: 0.878, green: 0.800, blue: 0.624)
 
-    /// Primary type. Bone rather than white; white on black is glaring.
-    static let bone = Color(red: 0.929, green: 0.918, blue: 0.878)
+    /// Rules, ticks and hairlines.
+    static let goldRule = gold.opacity(0.42)
 
-    /// Secondary type — station names, serving labels, metadata.
-    static let muted = Color(red: 0.561, green: 0.545, blue: 0.482)
+    /// Primary reading type — dish names and body copy. Near-white with a trace
+    /// of the gold's warmth in it so it sits in the same family.
+    static let bone = Color(red: 0.949, green: 0.941, blue: 0.925)
 
-    /// Tertiary — closed meals, disabled rows, leader dots.
-    static let faint = Color(red: 0.345, green: 0.337, blue: 0.306)
+    /// Secondary type: stamped labels, station names, metadata. Dimmed gold
+    /// rather than a grey, which is what keeps the palette to two colours.
+    static let muted = gold.opacity(0.62)
 
-    /// The only non-Purdue hue in the app, reserved exclusively for destructive
-    /// actions so that "remove" never has to borrow gold's authority.
-    static let ember = Color(red: 0.776, green: 0.376, blue: 0.263)
+    /// Tertiary: unavailable rows, placeholder items, disabled controls.
+    /// Held at 0.45 rather than lower so it still clears a readable contrast
+    /// ratio on the black ground — dimming is a signal, not an excuse to make
+    /// text unreadable.
+    static let faint = gold.opacity(0.45)
+
+    /// The faintest step, for row separators inside a block.
+    static let hairline = gold.opacity(0.16)
 }
